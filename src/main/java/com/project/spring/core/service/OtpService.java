@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -46,39 +47,61 @@ public class OtpService {
     public void generateOtp(String identifier, Channel channel, String ipAddress) {
         User user = findOrCreateUser(identifier);
 
-        // Check if blocked
         if (blockedUserRepository.existsByUser_IdAndActiveTrue(user.getId())) {
             BlockedUser blocked = blockedUserRepository.findByUser_IdAndActiveTrue(user.getId()).get();
-            auditService.log(user, null, EventType.USER_BLOCKED, channel, AuditStatus.BLOCKED, ipAddress, identifier, null);
+            auditService.log(user, null, EventType.USER_BLOCKED, channel,
+                    AuditStatus.BLOCKED, ipAddress, maskUtil.maskIdentifier(identifier), null);
             throw new UserBlockedException(blocked.getReason());
         }
 
-        // Check rate limit
         String rateLimitKey = "rate_limit:" + user.getId();
         String count = redisTemplate.opsForValue().get(rateLimitKey);
         int requestCount = count == null ? 0 : Integer.parseInt(count);
 
         if (requestCount >= appProperties.getRateLimitCount()) {
-            auditService.log(user, null, EventType.RATE_LIMIT_EXCEEDED, channel, AuditStatus.FAILED, ipAddress, maskUtil.maskIdentifier(identifier), null);
+            auditService.log(user, null, EventType.RATE_LIMIT_EXCEEDED, channel,
+                    AuditStatus.FAILED, ipAddress, maskUtil.maskIdentifier(identifier), null);
             throw new RateLimitException();
         }
 
-        // Increment rate limit counter
+        String cooldownKey = "cooldown:" + user.getId();
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(cooldownKey))) {
+            Long ttl = redisTemplate.getExpire(cooldownKey);
+            throw new OtpException(
+                    "Please wait " + ttl + " seconds before requesting a new OTP.",
+                    "RESEND_COOLDOWN_ACTIVE"
+            );
+        }
+
         if (count == null) {
-            redisTemplate.opsForValue().set(rateLimitKey, "1", Duration.ofSeconds(appProperties.getRateLimitWindowSeconds()));
+            redisTemplate.opsForValue().set(rateLimitKey, "1",
+                    Duration.ofSeconds(appProperties.getRateLimitWindowSeconds()));
         } else {
             redisTemplate.opsForValue().increment(rateLimitKey);
         }
 
-        // Generate OTP
+        redisTemplate.opsForValue().set(cooldownKey, "1",
+                Duration.ofSeconds(appProperties.getResendCooldownSeconds()));
+
         String otp = otpUtil.generateOtp();
         String otpHash = passwordEncoder.encode(otp);
 
-        // Store OTP in Redis
         String redisKey = "otp:" + user.getId() + ":" + channel.name();
-        redisTemplate.opsForValue().set(redisKey, otpHash, Duration.ofSeconds(appProperties.getExpirySeconds()));
+        redisTemplate.opsForValue().set(redisKey, otpHash,
+                Duration.ofSeconds(appProperties.getExpirySeconds()));
 
-        // Save OTP session to MySQL (hashed)
+        List<OtpSession> activeSessions = otpSessionRepository
+                .findByUserAndChannelAndStatusIn(
+                        user,
+                        channel,
+                        List.of(OtpStatus.PENDING, OtpStatus.SENT)
+                );
+
+        activeSessions.forEach(oldSession -> {
+            oldSession.setStatus(OtpStatus.EXPIRED);
+            otpSessionRepository.save(oldSession);
+        });
+
         OtpSession session = OtpSession.builder()
                 .user(user)
                 .channel(channel)
@@ -89,20 +112,16 @@ public class OtpService {
                 .build();
         otpSessionRepository.save(session);
 
-        // Deliver OTP
         boolean delivered = deliveryService.deliver(session, otp, identifier);
-        if (delivered) {
-            session.setStatus(OtpStatus.SENT);
-        } else {
-            session.setStatus(OtpStatus.FAILED);
-        }
+        session.setStatus(delivered ? OtpStatus.SENT : OtpStatus.FAILED);
         otpSessionRepository.save(session);
 
-        auditService.log(user, null, EventType.OTP_REQUESTED, channel, AuditStatus.SUCCESS, ipAddress, maskUtil.maskIdentifier(identifier), null);
+        auditService.log(user, null, EventType.OTP_REQUESTED, channel,
+                AuditStatus.SUCCESS, ipAddress, maskUtil.maskIdentifier(identifier), null);
     }
 
     @Transactional
-    public void verifyOtp(String identifier, Channel channel, String otp, String ipAddress) {
+    public Long verifyOtp(String identifier, Channel channel, String otp, String ipAddress) {
         User user = userRepository.findByEmail(identifier)
                 .or(() -> userRepository.findByPhoneNumber(identifier))
                 .orElseThrow(() -> new OtpException("User not found", "OTP_NOT_FOUND"));
@@ -138,6 +157,8 @@ public class OtpService {
         }
 
         auditService.log(user, null, EventType.OTP_VERIFIED, channel, AuditStatus.SUCCESS, ipAddress, maskUtil.maskIdentifier(identifier), null);
+
+        return user.getId();
     }
 
     private User findOrCreateUser(String identifier) {

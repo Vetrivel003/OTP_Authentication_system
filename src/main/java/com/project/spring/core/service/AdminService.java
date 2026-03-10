@@ -1,7 +1,9 @@
 package com.project.spring.core.service;
 
+import com.project.spring.api.request.AdminLoginRequest;
 import com.project.spring.api.request.BlockUserRequest;
 import com.project.spring.api.response.AdminStatsResponse;
+import com.project.spring.api.response.VerifyOtpResponse;
 import com.project.spring.core.exception.OtpException;
 import com.project.spring.data.entity.AdminUser;
 import com.project.spring.data.entity.BlockedUser;
@@ -10,10 +12,13 @@ import com.project.spring.data.enums.AuditStatus;
 import com.project.spring.data.enums.EventType;
 import com.project.spring.data.enums.OtpStatus;
 import com.project.spring.data.repository.*;
+import com.project.spring.security.JwtUtil;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -26,6 +31,41 @@ public class AdminService {
     private final OtpSessionRepository otpSessionRepository;
     private final AuditService auditService;
     private final AdminRepository adminRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
+
+
+    public VerifyOtpResponse login(AdminLoginRequest request, String ipAddress) {
+
+        AdminUser admin = adminRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new OtpException(
+                        "Invalid email or password", "INVALID_CREDENTIALS"));
+
+        if (!admin.isActive()) {
+            throw new OtpException("Admin account is deactivated", "ACCOUNT_INACTIVE");
+        }
+
+        if (!passwordEncoder.matches(request.getPassword(), admin.getPasswordHash())) {
+            auditService.log(null, admin, EventType.ADMIN_LOGIN,
+                    null, AuditStatus.FAILED, ipAddress, admin.getEmail(), "Invalid password");
+            throw new OtpException("Invalid email or password", "INVALID_CREDENTIALS");
+        }
+
+        admin.setLastLoginAt(LocalDateTime.now());
+        adminRepository.save(admin);
+
+        String accessToken = jwtUtil.generateAccessToken(admin.getId(), admin.getRole().name());
+        String refreshToken = jwtUtil.generateRefreshToken(admin.getId());
+
+        auditService.log(null, admin, EventType.ADMIN_LOGIN,
+                null, AuditStatus.SUCCESS, ipAddress, admin.getEmail(), null);
+
+        return VerifyOtpResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .accessTokenExpiresIn(900)
+                .build();
+    }
 
     @Transactional
     public void blockUser(BlockUserRequest request, Long adminId) {
@@ -42,9 +82,11 @@ public class AdminService {
         blockedUserRepository.save(BlockedUser.builder()
                 .user(user)
                 .reason(request.getReason())
+                .blockedBy(admin)
                 .build());
 
-        auditService.log(user, admin, EventType.USER_BLOCKED, null, AuditStatus.SUCCESS, null, null, null);
+        auditService.log(user, admin, EventType.USER_BLOCKED,
+                null, AuditStatus.SUCCESS, null, null, null);
     }
 
     @Transactional
@@ -52,14 +94,17 @@ public class AdminService {
         BlockedUser blocked = blockedUserRepository.findByUser_IdAndActiveTrue(userId)
                 .orElseThrow(() -> new OtpException("User is not blocked", "USER_NOT_BLOCKED"));
 
-        blocked.setActive(false);
-        blockedUserRepository.save(blocked);
-
         AdminUser admin = adminRepository.findById(adminId)
                 .orElseThrow(() -> new OtpException("Admin not found", "ADMIN_NOT_FOUND"));
 
-        auditService.log(blocked.getUser(), admin, EventType.USER_UNBLOCKED, null, AuditStatus.SUCCESS, null, null, null);
+        blocked.setActive(false);
+        blocked.setUnblockedAt(LocalDateTime.now());  // ← was missing before
+        blockedUserRepository.save(blocked);
+
+        auditService.log(blocked.getUser(), admin, EventType.USER_UNBLOCKED,
+                null, AuditStatus.SUCCESS, null, null, null);
     }
+
 
     public List<BlockedUser> getBlockedUsers() {
         return blockedUserRepository.findAllByActiveTrue();
