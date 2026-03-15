@@ -7,6 +7,7 @@ import com.project.spring.api.response.ApiResponse;
 import com.project.spring.api.response.VerifyOtpResponse;
 import com.project.spring.core.service.AuthService;
 import com.project.spring.core.service.OtpService;
+import com.project.spring.data.enums.OtpPurpose;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -55,9 +56,14 @@ public class OtpController {
                 ip
         );
 
+        if(request.getPurpose() == OtpPurpose.REGISTER){
+            return ResponseEntity.ok(
+                    ApiResponse.success("Registration verified. Please login to continue.", null)
+            );
+        }
+
         // Issue authentication tokens
         VerifyOtpResponse tokens = authService.issueTokens(userId, ip);
-
         return ResponseEntity.ok(
                 ApiResponse.success("OTP verified successfully", tokens)
         );

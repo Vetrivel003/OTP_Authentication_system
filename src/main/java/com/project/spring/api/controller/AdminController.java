@@ -6,8 +6,10 @@ import com.project.spring.api.response.AdminStatsResponse;
 import com.project.spring.api.response.ApiResponse;
 import com.project.spring.api.response.VerifyOtpResponse;
 import com.project.spring.core.service.AdminService;
+import com.project.spring.data.entity.AdminUser;
 import com.project.spring.data.entity.AuditLog;
 import com.project.spring.data.entity.BlockedUser;
+import com.project.spring.data.repository.AdminRepository;
 import com.project.spring.data.repository.AuditLogRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -16,6 +18,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,6 +30,23 @@ public class AdminController {
 
     private final AdminService adminService;
     private final AuditLogRepository auditLogRepository;
+    private final AdminRepository adminRepository;
+
+    @PostMapping("/create")
+    public String createAdmin() {
+        String hashedPassword = new BCryptPasswordEncoder().encode("Admin@123");
+
+        AdminUser admin = AdminUser.builder()
+                .name("Super Admin")
+                .email("admin@otpaut.com")
+                .passwordHash(hashedPassword)
+                .role(AdminUser.AdminRole.SUPER_ADMIN)
+                .active(true)
+                .build();
+
+        adminRepository.save(admin);
+        return "Admin created successfully";
+    }
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<VerifyOtpResponse>> login(

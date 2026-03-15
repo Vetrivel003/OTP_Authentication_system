@@ -8,9 +8,8 @@ USE otp_auth_db;
 
 -- ============================================================
 -- TABLE: users
--- Stores end users who authenticate via OTP
 -- ============================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id             BIGINT PRIMARY KEY AUTO_INCREMENT,
     email          VARCHAR(255) UNIQUE NULL,
     phone_number   VARCHAR(15) UNIQUE NULL,
@@ -23,9 +22,8 @@ CREATE TABLE users (
 
 -- ============================================================
 -- TABLE: admin_users
--- Stores admin accounts who manage the system
 -- ============================================================
-CREATE TABLE admin_users (
+CREATE TABLE IF NOT EXISTS admin_users (
     id              BIGINT PRIMARY KEY AUTO_INCREMENT,
     name            VARCHAR(100) NOT NULL,
     email           VARCHAR(255) NOT NULL UNIQUE,
@@ -39,9 +37,8 @@ CREATE TABLE admin_users (
 
 -- ============================================================
 -- TABLE: blocked_users
--- Tracks users blocked by admins with reason and history
 -- ============================================================
-CREATE TABLE blocked_users (
+CREATE TABLE IF NOT EXISTS blocked_users (
     id            BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id       BIGINT NOT NULL,
     reason        TEXT NOT NULL,
@@ -55,9 +52,8 @@ CREATE TABLE blocked_users (
 
 -- ============================================================
 -- TABLE: otp_sessions
--- Records every OTP request lifecycle
 -- ============================================================
-CREATE TABLE otp_sessions (
+CREATE TABLE IF NOT EXISTS otp_sessions (
     id          BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id     BIGINT NOT NULL,
     channel     ENUM('EMAIL', 'SMS', 'WHATSAPP') NOT NULL,
@@ -74,9 +70,8 @@ CREATE TABLE otp_sessions (
 
 -- ============================================================
 -- TABLE: otp_delivery_logs
--- Records every OTP delivery attempt per session
 -- ============================================================
-CREATE TABLE otp_delivery_logs (
+CREATE TABLE IF NOT EXISTS otp_delivery_logs (
     id              BIGINT PRIMARY KEY AUTO_INCREMENT,
     otp_session_id  BIGINT NOT NULL,
     channel         ENUM('EMAIL', 'SMS', 'WHATSAPP') NOT NULL,
@@ -90,9 +85,8 @@ CREATE TABLE otp_delivery_logs (
 
 -- ============================================================
 -- TABLE: refresh_token_blacklist
--- Tracks revoked refresh tokens to prevent reuse
 -- ============================================================
-CREATE TABLE refresh_token_blacklist (
+CREATE TABLE IF NOT EXISTS refresh_token_blacklist (
     id               BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id          BIGINT NOT NULL,
     token_hash       VARCHAR(255) NOT NULL UNIQUE,
@@ -106,9 +100,8 @@ CREATE TABLE refresh_token_blacklist (
 
 -- ============================================================
 -- TABLE: audit_logs
--- Full lifecycle audit trail — retained for 90 days
 -- ============================================================
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id            BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id       BIGINT NULL,
     admin_id      BIGINT NULL,

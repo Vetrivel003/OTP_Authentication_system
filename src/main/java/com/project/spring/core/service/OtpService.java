@@ -48,7 +48,7 @@ public class OtpService {
         User user = findOrCreateUser(identifier);
 
         if (blockedUserRepository.existsByUser_IdAndActiveTrue(user.getId())) {
-            BlockedUser blocked = blockedUserRepository.findByUser_IdAndActiveTrue(user.getId()).get();
+            BlockedUser blocked = blockedUserRepository.findByUser_Id(user.getId()).get();
             auditService.log(user, null, EventType.USER_BLOCKED, channel,
                     AuditStatus.BLOCKED, ipAddress, maskUtil.maskIdentifier(identifier), null);
             throw new UserBlockedException(blocked.getReason());
@@ -111,6 +111,21 @@ public class OtpService {
                 .ipAddress(ipAddress)
                 .build();
         otpSessionRepository.save(session);
+
+        if (channel == Channel.EMAIL && !identifier.contains("@")) {
+            throw new OtpException(
+                    "Email address required for EMAIL channel",
+                    "INVALID_IDENTIFIER"
+            );
+        }
+
+        if ((channel == Channel.SMS || channel == Channel.WHATSAPP)
+                && identifier.contains("@")) {
+            throw new OtpException(
+                    "Phone number required for SMS/WHATSAPP channel",
+                    "INVALID_IDENTIFIER"
+            );
+        }
 
         boolean delivered = deliveryService.deliver(session, otp, identifier);
         session.setStatus(delivered ? OtpStatus.SENT : OtpStatus.FAILED);

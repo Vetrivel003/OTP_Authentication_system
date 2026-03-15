@@ -29,9 +29,11 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/api/otp/**").permitAll()
                         .requestMatchers("/api/auth/refresh", "/api/auth/validate-token").permitAll()
-                        .requestMatchers("/api/admin/login").permitAll()
+                        .requestMatchers("/api/admin/login", "/api/admin/create").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         .anyRequest().authenticated()
                 )

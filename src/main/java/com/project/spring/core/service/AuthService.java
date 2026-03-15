@@ -67,7 +67,7 @@ public class AuthService {
                 .build();
         userRepository.save(user);
 
-        String identifier = request.getEmail() != null
+        String identifier = request.getChannel().equals("EMAIL")
                 ? request.getEmail()
                 : request.getPhoneNumber();
 
@@ -150,6 +150,11 @@ public class AuthService {
 
     @Transactional
     public void logout(String refreshToken, Long userId, String ipAddress) {
+
+        if (userId == null) {
+            throw new OtpException("User not authenticated", "UNAUTHORIZED");
+        }
+
         String tokenHash = hashToken(refreshToken);
         User user = userRepository.findById(userId).orElseThrow();
 

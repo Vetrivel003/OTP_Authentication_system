@@ -91,7 +91,7 @@ public class AdminService {
 
     @Transactional
     public void unblockUser(Long userId, Long adminId) {
-        BlockedUser blocked = blockedUserRepository.findByUser_IdAndActiveTrue(userId)
+        BlockedUser blocked = blockedUserRepository.findByUser_Id(userId)
                 .orElseThrow(() -> new OtpException("User is not blocked", "USER_NOT_BLOCKED"));
 
         AdminUser admin = adminRepository.findById(adminId)
@@ -107,7 +107,7 @@ public class AdminService {
 
 
     public List<BlockedUser> getBlockedUsers() {
-        return blockedUserRepository.findAllByActiveTrue();
+        return blockedUserRepository.findAll();
     }
 
     public AdminStatsResponse getStats() {
