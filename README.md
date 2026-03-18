@@ -294,7 +294,7 @@ streamlit-app/
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/otp-authentication-system.git
+git clone https://github.com/Vetrivel003/otp-authentication-system.git
 cd otp-authentication-system
 ```
 
